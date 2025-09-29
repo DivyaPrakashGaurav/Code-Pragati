@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="shortcut icon" href="/SIH Logo.png" type="image/x-icon">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Scaner</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tesseract.js for client-side OCR -->
+    <script src='https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for a subtle background pattern */
+        .main-background {
+            background-color: #f8fafc;
+            background-image:
+                linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+                linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+                linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+            background-size: 20px 20px;
+        }
+        /* Animation for the upload area highlight */
+        .drag-over {
+            transform: scale(1.02);
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
+        }
+        /* Custom scrollbar for the textarea */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="main-background flex items-center justify-center min-h-screen px-4 py-8">
+
+    <div class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+        
+        <!-- Left Panel: Image Upload and Controls -->
+        <div class="w-full md:w-1/2 p-6 md:p-8 border-b md:border-b-0 md:border-r border-slate-200 flex flex-col">
+            <header class="mb-6 text-center">
+                <h1 class="text-2xl md:text-3xl font-bold text-slate-800" data-translate-key="title">Image to Text</h1>
+                <p class="text-sm text-slate-500 mt-1" data-translate-key="subtitle">Extract text from images effortlessly</p>
+            </header>
+
+            <!-- Image Upload Area -->
+            <div id="upload-area" class="relative flex-grow flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer transition-all duration-300 hover:border-blue-500 hover:bg-blue-50">
+                <input type="file" id="image-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*">
+                
+                <div id="upload-prompt" class="space-y-2">
+                    <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <p class="text-slate-600" data-translate-key="upload_prompt_main"><span class="font-semibold text-blue-600">Click to upload</span> or drag and drop</p>
+                    <p class="text-xs text-slate-500" data-translate-key="file_types">PNG, JPG, BMP, WEBP</p>
+                </div>
+
+                <img id="image-preview" src="#" alt="Image Preview" class="hidden max-h-60 w-auto object-contain rounded-md"/>
+            </div>
+
+            <!-- Controls -->
+            <div class="mt-6 space-y-4">
+                <div>
+                    <label for="language-select" class="block text-sm font-medium text-slate-700 mb-1" data-translate-key="language_label">Language</label>
+                    <select id="language-select" class="w-full bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 transition-all">
+                    </select>
+                </div>
+                <button id="convert-btn" class="w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 shadow-md disabled:bg-slate-400 disabled:cursor-not-allowed" data-translate-key="convert_btn">
+                    Convert to Text
+                </button>
+            </div>
+            
+             <!-- Progress Bar -->
+            <div id="progress-section" class="hidden mt-4 text-center">
+                <p id="status-text" class="text-sm text-slate-600 mb-2"></p>
+                <div class="w-full bg-slate-200 rounded-full h-2.5">
+                    <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Text Output -->
+        <div class="w-full md:w-1/2 p-6 md:p-8 bg-slate-50 flex flex-col">
+            <header class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-slate-800" data-translate-key="extracted_text_label">Extracted Text</h2>
+                <button id="copy-btn" title="Copy to clipboard" class="relative p-2 rounded-md bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-slate-800 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span id="copy-feedback" class="absolute -top-8 left-1/2 -translate-x-1/2 text-xs bg-slate-800 text-white px-2 py-1 rounded-md opacity-0 transition-opacity duration-300 pointer-events-none" data-translate-key="copied_feedback">Copied!</span>
+                </button>
+            </header>
+            
+            <textarea id="output-text" readonly class="w-full flex-grow bg-white border border-slate-200 rounded-lg p-4 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Your extracted text will appear here..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const imageInput = document.getElementById('image-input');
+        const uploadArea = document.getElementById('upload-area');
+        const uploadPrompt = document.getElementById('upload-prompt');
+        const imagePreview = document.getElementById('image-preview');
+        const languageSelect = document.getElementById('language-select');
+        const convertBtn = document.getElementById('convert-btn');
+        const progressSection = document.getElementById('progress-section');
+        const statusText = document.getElementById('status-text');
+        const progressBar = document.getElementById('progress-bar');
+        const outputText = document.getElementById('output-text');
+        const copyBtn = document.getElementById('copy-btn');
+        const copyFeedback = document.getElementById('copy-feedback');
+
+        // Language data and mapping
+        const allLanguages = [
+            { code: 'en-IN', name: 'English', tesseractCode: 'eng' },
+            { code: 'hi-IN', name: 'हिन्दी (Hindi)', tesseractCode: 'hin' },
+            { code: 'gu-IN', name: 'ગુજરાતી (Gujarati)', tesseractCode: 'guj' },
+            { code: 'kn-IN', name: 'ಕನ್ನಡ (Kannada)', tesseractCode: 'kan' },
+            { code: 'ml-IN', name: 'മലയാളം (Malayalam)', tesseractCode: 'mal' },
+            { code: 'mr-IN', name: 'मराठी (Marathi)', tesseractCode: 'mar' },
+            { code: 'ta-IN', name: 'தமிழ் (Tamil)', tesseractCode: 'tam' },
+        ];
+        
+        // --- Translations ---
+        const translations = {
+            'eng': {
+                title: 'Image to Text',
+                subtitle: 'Extract text from images effortlessly',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">Click to upload</span> or drag and drop',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'Language',
+                convert_btn: 'Convert to Text',
+                extracted_text_label: 'Extracted Text',
+                converting_placeholder: 'Converting, please wait...',
+                status_recognizing: 'Recognizing Text...',
+                upload_first: 'Please upload an image first.',
+                invalid_file: 'Please select a valid image file.',
+                error_occurred: 'An error occurred during conversion.',
+                copied_feedback: 'Copied!',
+            },
+            'hin': {
+                title: 'इमेज से टेक्स्ट',
+                subtitle: 'छवियों से आसानी से टेक्स्ट निकालें',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">अपलोड करने के लिए क्लिक करें</span> या खींचें और छोड़ें',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'भाषा',
+                convert_btn: 'टेक्स्ट में बदलें',
+                extracted_text_label: 'निकाला गया टेक्स्ट',
+                converting_placeholder: 'बदल रहा है, कृपया प्रतीक्षा करें...',
+                status_recognizing: 'टेक्स्ट पहचाना जा रहा है...',
+                upload_first: 'कृपया पहले एक छवि अपलोड करें।',
+                invalid_file: 'कृपया एक मान्य छवि फ़ाइल चुनें।',
+                error_occurred: 'रूपांतरण के दौरान एक त्रुटि हुई।',
+                copied_feedback: 'कॉपी किया गया!',
+            },
+            'guj': {
+                title: 'ઇમેજ ટુ ટેક્સ્ટ',
+                subtitle: 'છબીઓમાંથી વિના પ્રયાસે ટેક્સ્ટ બહાર કાઢો',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">અપલોડ કરવા માટે ક્લિક કરો</span> અથવા ખેંચો અને છોડો',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'ભાષા',
+                convert_btn: 'ટેક્સ્ટમાં કન્વર્ટ કરો',
+                extracted_text_label: 'કાઢેલ ટેક્સ્ટ',
+                converting_placeholder: 'કન્વર્ટ કરી રહ્યું છે, કૃપા કરીને રાહ જુઓ...',
+                status_recognizing: 'ટેક્સ્ટ ઓળખાઈ રહ્યું છે...',
+                upload_first: 'કૃપા કરીને પહેલા એક છબી અપલોડ કરો.',
+                invalid_file: 'કૃપા કરીને એક માન્ય છબી ફાઇલ પસંદ કરો.',
+                error_occurred: 'રૂપાંતરણ દરમિયાન એક ભૂલ આવી.',
+                copied_feedback: 'કૉપિ કર્યું!',
+            },
+            'kan': {
+                title: 'ಚಿತ್ರದಿಂದ ಪಠ್ಯಕ್ಕೆ',
+                subtitle: 'ಚಿತ್ರಗಳಿಂದ ಪಠ್ಯವನ್ನು ಸಲೀಸಾಗಿ ಹೊರತೆಗೆಯಿರಿ',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">ಅಪ್‌ಲೋಡ್ ಮಾಡಲು ಕ್ಲಿಕ್ ಮಾಡಿ</span> ಅಥವಾ ಎಳೆದು ಬಿಡಿ',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'ಭಾಷೆ',
+                convert_btn: 'ಪಠ್ಯಕ್ಕೆ ಪರಿವರ್ತಿಸಿ',
+                extracted_text_label: 'ಹೊರತೆಗೆದ ಪಠ್ಯ',
+                converting_placeholder: 'ಪರಿವರ್ತಿಸಲಾಗುತ್ತಿದೆ, ದಯವಿಟ್ಟು ನಿರೀಕ್ಷಿಸಿ...',
+                status_recognizing: 'ಪಠ್ಯವನ್ನು ಗುರುತಿಸಲಾಗುತ್ತಿದೆ...',
+                upload_first: 'ದಯವಿಟ್ಟು ಮೊದಲು ಚಿತ್ರವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.',
+                invalid_file: 'ದಯವಿಟ್ಟು ಮಾನ್ಯವಾದ ಚಿತ್ರ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ.',
+                error_occurred: 'ಪರಿವರ್ತನೆಯ ಸಮಯದಲ್ಲಿ ದೋಷವೊಂದು ಸಂಭವಿಸಿದೆ.',
+                copied_feedback: 'ನಕಲಿಸಲಾಗಿದೆ!',
+            },
+            'mal': {
+                title: 'ഇമേജിൽ നിന്ന് ടെക്സ്റ്റ്',
+                subtitle: 'ചിത്രങ്ങളിൽ നിന്ന് അനായാസം ടെക്സ്റ്റ് എക്സ്ട്രാക്റ്റുചെയ്യുക',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">അപ്‌ലോഡ് ചെയ്യാൻ ക്ലിക്കുചെയ്യുക</span> അല്ലെങ്കിൽ വലിച്ചിടുക',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'ഭാഷ',
+                convert_btn: 'ടെക്സ്റ്റിലേക്ക് മാറ്റുക',
+                extracted_text_label: 'വേർതിരിച്ചെടുത്ത ടെക്സ്റ്റ്',
+                converting_placeholder: 'മാറ്റുന്നു, ദയവായി കാത്തിരിക്കുക...',
+                status_recognizing: 'ടെക്സ്റ്റ് തിരിച്ചറിയുന്നു...',
+                upload_first: 'ദയവായി ആദ്യം ഒരു ചിത്രം അപ്‌ലോഡ് ചെയ്യുക.',
+                invalid_file: 'ദയവായി സാധുവായ ഒരു ഇമേജ് ഫയൽ തിരഞ്ഞെടുക്കുക.',
+                error_occurred: 'പരിവർത്തനത്തിനിടയിൽ ഒരു പിശക് സംഭവിച്ചു.',
+                copied_feedback: 'പകർത്തി!',
+            },
+            'mar': {
+                title: 'प्रतिमेतून मजकूर',
+                subtitle: 'प्रतिमांमधून मजकूर सहजतेने काढा',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">अपलोड करण्यासाठी क्लिक करा</span> किंवा ड्रॅग आणि ड्रॉप करा',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'भाषा',
+                convert_btn: 'मजकूरात रूपांतरित करा',
+                extracted_text_label: 'काढलेला मजकूर',
+                converting_placeholder: 'रूपांतरित करत आहे, कृपया प्रतीक्षा करा...',
+                status_recognizing: 'मजकूर ओळखत आहे...',
+                upload_first: 'कृपया प्रथम एक प्रतिमा अपलोड करा.',
+                invalid_file: 'कृपया वैध प्रतिमा फाइल निवडा.',
+                error_occurred: 'रूपांतरणादरम्यान एक त्रुटी आली.',
+                copied_feedback: 'कॉपी केले!',
+            },
+            'tam': {
+                title: 'படத்திலிருந்து உரை',
+                subtitle: 'படங்களிலிருந்து உரையை சிரமமின்றிப் பிரித்தெடுக்கவும்',
+                upload_prompt_main: '<span class="font-semibold text-blue-600">பதிவேற்ற கிளிக் செய்யவும்</span> அல்லது இழுத்து விடவும்',
+                file_types: 'PNG, JPG, BMP, WEBP',
+                language_label: 'மொழி',
+                convert_btn: 'உரையாக மாற்று',
+                extracted_text_label: 'பிரித்தெடுக்கப்பட்ட உரை',
+                converting_placeholder: 'மாற்றுகிறது, தயவுசெய்து காத்திருக்கவும்...',
+                status_recognizing: 'உரையை அங்கீகரிக்கிறது...',
+                upload_first: 'முதலில் ஒரு படத்தைப் பதிவேற்றவும்.',
+                invalid_file: 'சரியான படக் கோப்பைத் தேர்ந்தெடுக்கவும்.',
+                error_occurred: 'மாற்றத்தின் போது ஒரு பிழை ஏற்பட்டது.',
+                copied_feedback: 'நகலெடுக்கப்பட்டது!',
+            }
+        };
+
+        let currentTranslations = translations.eng; // Default to English
+        
+        // --- Initialization ---
+        function initialize() {
+            populateLanguageDropdown();
+            setupEventListeners();
+            updateUIText(); // Set initial UI text
+        }
+        
+        function populateLanguageDropdown() {
+            allLanguages.forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang.tesseractCode;
+                option.textContent = lang.name;
+                languageSelect.appendChild(option);
+            });
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            imageInput.addEventListener('change', handleImageUpload);
+            convertBtn.addEventListener('click', performOCR);
+            copyBtn.addEventListener('click', copyToClipboard);
+            languageSelect.addEventListener('change', updateUIText);
+            
+            // Drag and Drop listeners
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, () => uploadArea.classList.add('drag-over', 'border-blue-500', 'bg-blue-50'), false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('drag-over', 'border-blue-500', 'bg-blue-50'), false);
+            });
+            uploadArea.addEventListener('drop', handleDrop, false);
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                imageInput.files = files;
+                handleImageUpload();
+            }
+        }
+
+        // --- Core Functions ---
+        function handleImageUpload() {
+            const file = imageInput.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.classList.remove('hidden');
+                    uploadPrompt.classList.add('hidden');
+                };
+                reader.readAsDataURL(file);
+                outputText.value = ''; // Clear previous results
+            } else {
+                alert(currentTranslations.invalid_file);
+                resetImagePreview();
+            }
+        }
+
+        function resetImagePreview() {
+            imagePreview.src = '#';
+            imagePreview.classList.add('hidden');
+            uploadPrompt.classList.remove('hidden');
+            imageInput.value = ''; // Reset file input
+        }
+
+        async function performOCR() {
+            const file = imageInput.files[0];
+            if (!file) {
+                alert(currentTranslations.upload_first);
+                return;
+            }
+
+            setLoadingState(true);
+            
+            const selectedLang = languageSelect.value;
+
+            try {
+                const worker = await Tesseract.createWorker(selectedLang, 1, {
+                    logger: m => updateProgress(m),
+                });
+                
+                const { data: { text } } = await worker.recognize(file);
+                outputText.value = text;
+                
+                await worker.terminate();
+            } catch (error) {
+                console.error('OCR Error:', error);
+                statusText.textContent = currentTranslations.error_occurred;
+                progressBar.style.width = '100%';
+                progressBar.classList.add('bg-red-500');
+            } finally {
+                setTimeout(() => setLoadingState(false, true), 500);
+            }
+        }
+
+        function copyToClipboard() {
+            if (!outputText.value) return;
+            
+            outputText.select();
+            outputText.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showCopyFeedback();
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+            }
+            window.getSelection().removeAllRanges();
+        }
+        
+        function showCopyFeedback() {
+            copyFeedback.classList.remove('opacity-0');
+            copyFeedback.classList.add('opacity-100');
+            setTimeout(() => {
+                copyFeedback.classList.remove('opacity-100');
+                copyFeedback.classList.add('opacity-0');
+            }, 2000);
+        }
+
+        // --- UI State and Text Management ---
+        function updateUIText() {
+            const selectedLangCode = languageSelect.value;
+            currentTranslations = translations[selectedLangCode] || translations.eng;
+
+            document.querySelectorAll('[data-translate-key]').forEach(element => {
+                const key = element.dataset.translateKey;
+                if (currentTranslations[key]) {
+                    // Use innerHTML for keys that might contain HTML tags
+                    if (key === 'upload_prompt_main') {
+                        element.innerHTML = currentTranslations[key];
+                    } else {
+                        element.textContent = currentTranslations[key];
+                    }
+                }
+            });
+
+            // Update placeholder text which doesn't have a data-translate-key
+            const placeholderKey = 'Your extracted text will appear here...';
+            const translatedPlaceholder = currentTranslations.extracted_text_label ? `${currentTranslations.extracted_text_label} ...` : placeholderKey;
+            outputText.placeholder = translatedPlaceholder;
+        }
+
+        function setLoadingState(isLoading, isFinished = false) {
+            convertBtn.disabled = isLoading;
+            languageSelect.disabled = isLoading;
+            imageInput.disabled = isLoading;
+
+            if (isLoading) {
+                progressSection.classList.remove('hidden');
+                outputText.value = currentTranslations.converting_placeholder;
+            } else {
+                if (!isFinished) {
+                    progressSection.classList.add('hidden');
+                }
+            }
+        }
+
+        function updateProgress(message) {
+            if (message.status === 'recognizing text') {
+                const progress = Math.round(message.progress * 100);
+                statusText.textContent = `${currentTranslations.status_recognizing} (${progress}%)`;
+                progressBar.style.width = `${progress}%`;
+                progressBar.classList.remove('bg-red-500');
+            } else {
+                // Capitalize first letter of status for display
+                const status = message.status.charAt(0).toUpperCase() + message.status.slice(1);
+                statusText.textContent = status;
+                progressBar.style.width = '0%';
+            }
+        }
+        
+        // Start the application
+        document.addEventListener('DOMContentLoaded', initialize);
+    </script>
+</body>
+</html>
+
